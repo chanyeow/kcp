@@ -182,17 +182,17 @@ public:
 	void send(int peer, const void *data, int size) {
 		if (peer == 0) {
 			tx1++;
-			if (r12.random() < lostrate) return;
-			if ((int)p12.size() >= nmax) return;
+			if (r12.random() < lostrate) return;		//小于这个丢包率，就模拟丢包了
+			if ((int)p12.size() >= nmax) return;		//消息积压不超过1000条
 		}	else {
 			tx2++;
-			if (r21.random() < lostrate) return;
+			if (r21.random() < lostrate) return;		//小于这个丢包率，就模拟丢包了
 			if ((int)p21.size() >= nmax) return;
 		}
 		DelayPacket *pkt = new DelayPacket(size, data);
 		current = iclock();
 		IUINT32 delay = rttmin;
-		if (rttmax > rttmin) delay += rand() % (rttmax - rttmin);
+		if (rttmax > rttmin) delay += rand() % (rttmax - rttmin);	// 随机 60ms - 125ms 内的一个随机值
 		pkt->setts(current + delay);
 		if (peer == 0) {
 			p12.push_back(pkt);
@@ -213,10 +213,10 @@ public:
 		}
 		DelayPacket *pkt = *it;
 		current = iclock();
-		if (current < pkt->ts()) return -2;
-		if (maxsize < pkt->size()) return -3;
+		if (current < pkt->ts()) return -2;		//当前时间小于设置的超时时间，则认为丢包
+		if (maxsize < pkt->size()) return -3;	//因为这里存在丢包的return，所以有概率是积压超过1000条，正常收包会从p12、p21中删除
 		if (peer == 0) {
-			p21.erase(it);
+			p21.erase(it);						// 2发向1放到p21里，所以对于1收到的包就是从p21里删除
 		}	else {
 			p12.erase(it);
 		}

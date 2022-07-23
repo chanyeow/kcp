@@ -37,7 +37,7 @@ const IUINT32 IKCP_WND_RCV = 128;       // must >= max fragment size
 const IUINT32 IKCP_MTU_DEF = 1400;
 const IUINT32 IKCP_ACK_FAST	= 3;
 const IUINT32 IKCP_INTERVAL	= 100;
-const IUINT32 IKCP_OVERHEAD = 24;
+const IUINT32 IKCP_OVERHEAD = 24;			//mtu大小相关，mtu设置成1500，实际应该是要减掉这个24的头
 const IUINT32 IKCP_DEADLINK = 20;
 const IUINT32 IKCP_THRESH_INIT = 2;
 const IUINT32 IKCP_THRESH_MIN = 2;
@@ -475,7 +475,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 	if (len < 0) return -1;
 
 	// append to previous segment in streaming mode (if possible)
-	if (kcp->stream != 0) {
+	if (kcp->stream != 0) {					//看上去是合并到前一个seg里，但是这个模式并没有打开
 		if (!iqueue_is_empty(&kcp->snd_queue)) {
 			IKCPSEG *old = iqueue_entry(kcp->snd_queue.prev, IKCPSEG, node);
 			if (old->len < kcp->mss) {
@@ -505,14 +505,14 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 	}
 
 	if (len <= (int)kcp->mss) count = 1;
-	else count = (len + kcp->mss - 1) / kcp->mss;
+	else count = (len + kcp->mss - 1) / kcp->mss;		//对mss求余决定是否要分包
 
 	if (count >= (int)IKCP_WND_RCV) return -2;
 
-	if (count == 0) count = 1;
+	if (count == 0) count = 1;			
 
 	// fragment
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < count; i++) {		//这里开始处理分片
 		int size = len > (int)kcp->mss ? (int)kcp->mss : len;
 		seg = ikcp_segment_new(kcp, size);
 		assert(seg);
@@ -525,7 +525,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 		seg->len = size;
 		seg->frg = (kcp->stream == 0)? (count - i - 1) : 0;
 		iqueue_init(&seg->node);
-		iqueue_add_tail(&seg->node, &kcp->snd_queue);
+		iqueue_add_tail(&seg->node, &kcp->snd_queue);	// snd_queue是待发送队列
 		kcp->nsnd_que++;
 		if (buffer) {
 			buffer += size;
@@ -561,10 +561,10 @@ static void ikcp_shrink_buf(ikcpcb *kcp)
 {
 	struct IQUEUEHEAD *p = kcp->snd_buf.next;
 	if (p != &kcp->snd_buf) {
-		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
+		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);		//正常情况下，next不等于curr，所以snd_una向后移位，表示前一个已经收到了，
 		kcp->snd_una = seg->sn;
 	}	else {
-		kcp->snd_una = kcp->snd_nxt;
+		kcp->snd_una = kcp->snd_nxt;		//这里表示重复收到包
 	}
 }
 
@@ -592,11 +592,11 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn)
 
 static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una)
 {
-	struct IQUEUEHEAD *p, *next;
+	struct IQUEUEHEAD *p, *next;	//una是确认号
 	for (p = kcp->snd_buf.next; p != &kcp->snd_buf; p = next) {
 		IKCPSEG *seg = iqueue_entry(p, IKCPSEG, node);
 		next = p->next;
-		if (_itimediff(una, seg->sn) > 0) {
+		if (_itimediff(una, seg->sn) > 0) {		//如果确认号和序号有差值，说明之前的已经确认了
 			iqueue_del(p);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
@@ -786,7 +786,7 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 			return -3;
 
 		kcp->rmt_wnd = wnd;
-		ikcp_parse_una(kcp, una);
+		ikcp_parse_una(kcp, una);		//根据una，会删除snd_buf中，所有una之前的kcp数据包，因为这些数据包接收者已经确认
 		ikcp_shrink_buf(kcp);
 
 		if (cmd == IKCP_CMD_ACK) {
@@ -956,13 +956,13 @@ void ikcp_flush(ikcpcb *kcp)
 	// flush acknowledges
 	count = kcp->ackcount;
 	for (i = 0; i < count; i++) {
-		size = (int)(ptr - buffer);
-		if (size + (int)IKCP_OVERHEAD > (int)kcp->mtu) {
-			ikcp_output(kcp, buffer, size);
+		size = (int)(ptr - buffer);		//想象成一块无类型内存块，ptr是游标，ptr一直填充数据向前移动
+		if (size + (int)IKCP_OVERHEAD > (int)kcp->mtu) {	//这个24看作是头大小（ikcp_encode_seg这里在封装的头）
+			ikcp_output(kcp, buffer, size);		//这个是应用层发送的数据，拆解成kcp包，通过output以udp方式发送
 			ptr = buffer;
 		}
-		ikcp_ack_get(kcp, i, &seg.sn, &seg.ts);
-		ptr = ikcp_encode_seg(ptr, &seg);
+		ikcp_ack_get(kcp, i, &seg.sn, &seg.ts);	//编写序号、时间序列
+		ptr = ikcp_encode_seg(ptr, &seg);		//将seg的数据封装成ptr包头，这里的ptr在封装时就前进了
 	}
 
 	kcp->ackcount = 0;
@@ -1014,8 +1014,8 @@ void ikcp_flush(ikcpcb *kcp)
 	kcp->probe = 0;
 
 	// calculate window size
-	cwnd = _imin_(kcp->snd_wnd, kcp->rmt_wnd);
-	if (kcp->nocwnd == 0) cwnd = _imin_(kcp->cwnd, cwnd);
+	cwnd = _imin_(kcp->snd_wnd, kcp->rmt_wnd);		//拥塞窗口，表示发送方可发送多少个KCP数据包。 snd_wnd=可发送的数据，rmt_wnd=可发送的数据最大值 / 接收方可以接收的数据的最小值
+	if (kcp->nocwnd == 0) cwnd = _imin_(kcp->cwnd, cwnd);	// kcp->nocwnd = nc, ==0 就是不禁用，就不管接收方窗口大小了。	
 
 	// move data from snd_queue to snd_buf
 	while (_itimediff(kcp->snd_nxt, kcp->snd_una + cwnd) < 0) {
@@ -1273,10 +1273,10 @@ int ikcp_wndsize(ikcpcb *kcp, int sndwnd, int rcvwnd)
 {
 	if (kcp) {
 		if (sndwnd > 0) {
-			kcp->snd_wnd = sndwnd;
+			kcp->snd_wnd = sndwnd;								//最大发送窗口
 		}
 		if (rcvwnd > 0) {   // must >= max fragment size
-			kcp->rcv_wnd = _imax_(rcvwnd, IKCP_WND_RCV);
+			kcp->rcv_wnd = _imax_(rcvwnd, IKCP_WND_RCV);		//最大接受窗口
 		}
 	}
 	return 0;
