@@ -22,27 +22,32 @@
 //=====================================================================
 // KCP BASIC
 //=====================================================================
-const IUINT32 IKCP_RTO_NDL = 30;		// no delay min rto
-const IUINT32 IKCP_RTO_MIN = 100;		// normal min rto
-const IUINT32 IKCP_RTO_DEF = 200;
-const IUINT32 IKCP_RTO_MAX = 60000;
-const IUINT32 IKCP_CMD_PUSH = 81;		// cmd: push data
-const IUINT32 IKCP_CMD_ACK  = 82;		// cmd: ack
-const IUINT32 IKCP_CMD_WASK = 83;		// cmd: window probe (ask)
-const IUINT32 IKCP_CMD_WINS = 84;		// cmd: window size (tell)
-const IUINT32 IKCP_ASK_SEND = 1;		// need to send IKCP_CMD_WASK
-const IUINT32 IKCP_ASK_TELL = 2;		// need to send IKCP_CMD_WINS
-const IUINT32 IKCP_WND_SND = 32;
-const IUINT32 IKCP_WND_RCV = 128;       // must >= max fragment size
+const IUINT32 IKCP_RTO_NDL = 30;		// 无延迟模式下				no delay min rto
+const IUINT32 IKCP_RTO_MIN = 100;		// 正常模式下 最小超时重传		normal min rto
+const IUINT32 IKCP_RTO_DEF = 200;		// 默认超时重传
+const IUINT32 IKCP_RTO_MAX = 60000;		// 最大
+
+const IUINT32 IKCP_CMD_PUSH = 81;		// 协议：正常接受数据			cmd: push data
+const IUINT32 IKCP_CMD_ACK  = 82;		// 协议：受到ack回复			cmd: ack
+const IUINT32 IKCP_CMD_WASK = 83;		// 协议：询问对方窗口size		cmd: window probe (ask)
+const IUINT32 IKCP_CMD_WINS = 84;		// 协议：告知对方我的窗口size	cmd: window size (tell)
+
+const IUINT32 IKCP_ASK_SEND = 1;		// need to send IKCP_CMD_WASK  是否要重新发送IKCP_CMD_WASK 
+const IUINT32 IKCP_ASK_TELL = 2;		// need to send IKCP_CMD_WINS  是否要重新发送IKCP_CMD_WINS
+
+const IUINT32 IKCP_WND_SND = 32;		// 发送队列滑动窗口最大值
+const IUINT32 IKCP_WND_RCV = 128;       // 接受队列滑动窗口最大值  must >= max fragment size
 const IUINT32 IKCP_MTU_DEF = 1400;
 const IUINT32 IKCP_ACK_FAST	= 3;
-const IUINT32 IKCP_INTERVAL	= 100;
-const IUINT32 IKCP_OVERHEAD = 24;			//mtu大小相关，mtu设置成1500，实际应该是要减掉这个24的头
+const IUINT32 IKCP_INTERVAL	= 100;		// 刷新时间间隔
+const IUINT32 IKCP_OVERHEAD = 24;		// mtu大小相关，mtu设置成1500，实际应该是要减掉这个24的头
 const IUINT32 IKCP_DEADLINK = 20;
-const IUINT32 IKCP_THRESH_INIT = 2;
-const IUINT32 IKCP_THRESH_MIN = 2;
-const IUINT32 IKCP_PROBE_INIT = 7000;		// 7 secs to probe window size
-const IUINT32 IKCP_PROBE_LIMIT = 120000;	// up to 120 secs to probe window
+
+const IUINT32 IKCP_THRESH_INIT = 2;		// 慢热启动 初始窗口大小
+const IUINT32 IKCP_THRESH_MIN = 2;		// 慢热启动 最小窗口大小
+
+const IUINT32 IKCP_PROBE_INIT = 7000;		// 7 secs to probe window size		请求询问远端窗口大小的初始时间
+const IUINT32 IKCP_PROBE_LIMIT = 120000;	// up to 120 secs to probe window	请求询问远端窗口大小的最大时间
 const IUINT32 IKCP_FASTACK_LIMIT = 5;		// max times to trigger fastack
 
 
@@ -475,7 +480,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 	if (len < 0) return -1;
 
 	// append to previous segment in streaming mode (if possible)
-	if (kcp->stream != 0) {					//看上去是合并到前一个seg里，但是这个模式并没有打开
+	if (kcp->stream != 0) {					//流模式，合并到前一个seg里，但是这个模式并没有打开
 		if (!iqueue_is_empty(&kcp->snd_queue)) {
 			IKCPSEG *old = iqueue_entry(kcp->snd_queue.prev, IKCPSEG, node);
 			if (old->len < kcp->mss) {

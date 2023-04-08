@@ -267,8 +267,8 @@ typedef struct IQUEUEHEAD iqueue_head;
 struct IKCPSEG
 {
 	struct IQUEUEHEAD node;
-	IUINT32 conv;
-	IUINT32 cmd;
+	IUINT32 conv;	// 会话序号
+	IUINT32 cmd;	// 指令类型 IKCP_CMD_PUSH ~ IKCP_CMD_WINS
 	IUINT32 frg;
 	IUINT32 wnd;
 	IUINT32 ts;
